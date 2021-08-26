@@ -63,6 +63,7 @@ class ERLPopper:
 
     def _connect(self):
         # Connect to target
+        self._log_verbose(f"  Connecting to {self.remote_host}:{self.remote_port}")
         self._sock.connect((self.remote_host, self.remote_port))
 
     def _generate_name_packet_old(self, name=None):
@@ -138,8 +139,6 @@ class ERLPopper:
         #packet = pack('!HcHI', 7 + len(name), b'n', self.version, 0x3499c) + bytes(name, self.UTF8)
         packet = pack('!HcHI', 7 + len(name), b'n', self.version, 0xdf7fbd) + bytes(name, self.UTF8)
 
-        self._log_verbose(f"Generated name packet: '{repr(packet)}'")
-        
         return packet
 
     def _generate_name_packet_new(self, name=None):
@@ -149,29 +148,31 @@ class ERLPopper:
         #name = "maik@ubu-brute01-maik"
         packet = pack('!HcQIH', 15 + len(name), b'N', 0x103499c, 0xdeadbeef, len(name)) + bytes(name, self.UTF8)
 
-        self._log_verbose(f"Generated name packet: '{repr(packet)}'")
-
         return packet
 
     def send_name(self, name=None):
+        self._log_verbose("  send_name")
+
         if self.version == 5:
             packet = self._generate_name_packet_old(name)
         elif self.version == 6:
             packet = self._generate_name_packet_new(name)
         else:
-            #self._log_verbose(f"Invalid version: '{repr(self.version)}'")
             raise self.VersionError(version=self.version, message=f"Invalid version: '{repr(self.version)}")
+
+        self._log_verbose(f"    Generated name packet: '{repr(packet)}'")
 
         try:
             self._sock.sendall(packet)
         except BrokenPipeError:
-            self._log_verbose(f"send_name failed. Is host reachable?")
+            self._log_verbose(f"    send_name failed. Is host reachable?")
             raise
 
     def _recv_status(self):
         '''
         recv_status
         '''
+        self._log_verbose("  recv_status")
 
         # Receive 2 byte len
         msg_len = self._sock.recv(2)
@@ -179,7 +180,7 @@ class ERLPopper:
         if msg_len == b'':
             raise self.EmptyResponseError(message=f"Expected 2-byte integer length but got: '{repr(msg_len)}'")
 
-        self._log_verbose(f"Received msg_len: '{repr(msg_len)}'")
+        self._log_verbose(f"    Received msg_len: '{repr(msg_len)}'")
 
         msg_len = int.from_bytes(msg_len, "big")
 
@@ -192,7 +193,7 @@ class ERLPopper:
 
         msg = msg.decode(self.UTF8)
 
-        self._log_verbose(f"Received msg: '{repr(msg)}'")
+        self._log_verbose(f"    Received msg: '{repr(msg)}'")
 
         return msg
 
@@ -200,10 +201,11 @@ class ERLPopper:
         '''
         recv_challenge
         '''
+        self._log_verbose("  recv_challenge")
 
         # Receive 2 byte len
         msg_len = self._sock.recv(2)
-        self._log_verbose(f"Received msg_len: '{repr(msg_len)}'")
+        self._log_verbose(f"    Received msg_len: '{repr(msg_len)}'")
 
         msg_len = int.from_bytes(msg_len, "big")
 
@@ -211,7 +213,7 @@ class ERLPopper:
         data = self._sock.recv(msg_len)
         # 1 + 2 + 4 + 4 = 11
         (tag, version, flags, challenge, name) = unpack(f'!cHII{msg_len-11}s', data[:msg_len])
-        self._log_verbose(f"Received tag: '{tag}', version: '{version}', flags: '{flags}', challenge: '{challenge}', name: '{name}'")
+        self._log_verbose(f"    Received tag: '{tag}', version: '{version}', flags: '{flags}', challenge: '{challenge}', name: '{name}'")
         
         # We are expecting 'n' tag
         assert(tag.decode(self.UTF8) == 'n')
@@ -223,7 +225,7 @@ class ERLPopper:
         m.update(self.cookie.encode(self.UTF8))
         m.update(str(challenge).encode(self.UTF8))
         response = m.digest()
-        self._log_verbose(f"Generated digest: '{repr(response)}'")
+        self._log_verbose(f"    Generated digest: '{repr(response)}'")
 
         packet = pack('!HcI', len(response)+5, b'r', challenge) + response
 
@@ -233,17 +235,22 @@ class ERLPopper:
         '''
         send_challenge_reply
         '''
+        self._log_verbose("  send_challenge_reply")
 
-        self._sock.sendall(self._generate_challenge_reply_packet(challenge))
+        packet = self._generate_challenge_reply_packet(challenge)
+
+        self._log_verbose(f"    Sending: {packet}")
+        self._sock.sendall(packet)
 
     def _recv_challenge_ack(self):
         '''
         recv_challenge_ack
         '''
+        self._log_verbose("  recv_challenge_ack")
 
         # Receive 2 byte len
         msg_len = self._sock.recv(2)
-        self._log_verbose(f"Received msg_len: '{repr(msg_len)}'")
+        self._log_verbose(f"    Received msg_len: '{repr(msg_len)}'")
 
         msg_len = int.from_bytes(msg_len, "big")
 
@@ -254,7 +261,7 @@ class ERLPopper:
             # Receive remainder of message
             data = self._sock.recv(msg_len)
             (tag, digest) = unpack(f'!c16s', data[:msg_len])
-            self._log_verbose(f"Received tag: '{tag}', digest: '{digest}'")
+            self._log_verbose(f"    Received tag: '{tag}', digest: '{digest}'")
 
             # We are expecting 'a' tag
             assert(tag.decode(self.UTF8) == 'a')
@@ -270,7 +277,7 @@ class ERLPopper:
         if not cookie:
             cookie = self.cookie
 
-        self._log_verbose(f"Trying cookie: '{repr(cookie)}'")
+        self._log_verbose(f"  Trying cookie: '{repr(cookie)}'")
 
         # send_name
         try:
@@ -289,7 +296,7 @@ class ERLPopper:
         #elif ...
         result = False
         if status == 'ok' or status == 'ok_simultaneous':
-            self._log_verbose(f"Got good status response: '{repr(status)}'")
+            self._log_verbose(f"    Got good status response: '{repr(status)}'")
             challenge = self._recv_challenge()
             
             # Not sure how useful this is
@@ -303,7 +310,7 @@ class ERLPopper:
             result = (digest != False)
         else:
             # 'not_allowed' and others
-            self._log_verbose(f"Got bad status response: '{repr(status)}'")
+            self._log_verbose(f"    Got bad status response: '{repr(status)}'")
             raise self.StatusError(status=status, message="The connection is disallowed for some (unspecified) security reason. Flags or version mismatch?")
 
         return result
