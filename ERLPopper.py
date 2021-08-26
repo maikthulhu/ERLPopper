@@ -34,6 +34,11 @@ class ERLPopper:
         self.version = version
         self._VERBOSE = verbose
 
+        if self.version != 5:
+            # [TODO] Implement version 6 handshake
+            self._log_verbose(f"Version {self.version} not implemented.")
+            raise NotImplementedError()
+
         # Generate a node name to identify as
         self.node_name = self._generate_node_name()
 
@@ -63,7 +68,7 @@ class ERLPopper:
 
     def _generate_name_packet_old(self, name=None):
         '''
-        Old format:
+        Old v5 format:
         |--------|----|--------|----------------|-----------------------------------|
         |\x00\x10|'n' |\x00\x05|\x00\x03\x49\x9c|NAME@node ....                     |
         |--------|----|--------|----------------|-----------------------------------|
@@ -81,7 +86,81 @@ class ERLPopper:
             |--   16 = 1 + 2 + 4 + len(node_name)
             |--   Does not include these 2 bytes
 
-        New format:
+        Capability flags / distribution flags
+        http://erlang.org/doc/apps/erts/erl_dist_protocol.html#dflags
+
+        This is how we let the other node know about our capabilities. This value 
+        was in the original exploit.
+
+        0x0003499c == 0b0000 0000 0011 0100 1001 1001 1100
+                           |        ||  |   |  | |  | ||-- DFLAG_EXTENDED_REFERENCES
+                           |        ||  |   |  | |  | |-- DFLAG_DIST_MONITOR
+                           |        ||  |   |  | |  |-- DFLAG_FUN_TAGS
+                           |        ||  |   |  | |-- DFLAG_NEW_FUN_TAGS 
+                           |        ||  |   |  |-- DFLAG_EXTENDED_PIDS_PORTS 
+                           |        ||  |   |-- DFLAG_NEW_FLOATS 
+                           |        ||  |-- DFLAG_SMALL_ATOM_TAGS
+                           |        ||-- DFLAG_UTF8_ATOMS
+                           |        |-- DFLAG_MAP_TAG 
+                           |-- DFLAG_HANDSHAKE_23
+
+        This value didn't work on a different (newer??) implementation. Using 
+        tcpdump I captured a session using the official erl and saw the flags 
+        was different. Dropping in this new value allowed all tests to 
+        complete successfully. Basically we're showing that we support more 
+        options.
+
+        ** = new
+
+        Consider changing:
+          -DFLAG_PUBLISHED: "The node is to be published and part of the global namespace."
+          -DFLAG_DIST_MONITOR_NAME: "The node impelemnts distributed named proces monitoring."
+          -DFLAG_EXPORT_PTR_TAG: "The nude understands the EXPORT_EXT tag."
+          -DFLAG_BIT_BINARIES: "The node understands the BIT_BINARY_EXT tag."
+          -DFLAG_UNICODE_IO,-DFLAG_DIST_HDR_ATOM_CACHE: "The node implements atom cache in distribution header."
+          +DFLAG_BIG_CREATION: "The node understands big node creation tags..."
+          -DFLAG_SEND_SENDER: Indicates we'll use the new SEND_SENDER control message.
+
+        0x00df7fbd == 0b0000 1101 1111 0111 1111 1011 1101
+                           | || | ||||  ||| |||| | || || |-- DFLAG_PUBLISHED**-
+                           | || | ||||  ||| |||| | || ||-- DFLAG_EXTENDED_REFERENCES
+                           | || | ||||  ||| |||| | || |-- DFLAG_DIST_MONITOR
+                           | || | ||||  ||| |||| | ||-- DFLAG_FUN_TAGS
+                           | || | ||||  ||| |||| | |-- DFLAG_DIST_MONITOR_NAME**-
+                           | || | ||||  ||| |||| |-- DFLAG_NEW_FUN_TAGS
+                           | || | ||||  ||| ||||-- DFLAG_EXTENDED_PIDS_PORTS
+                           | || | ||||  ||| |||-- DFLAG_EXPORT_PTR_TAG**-
+                           | || | ||||  ||| ||-- DFLAG_BIT_BINARIES**-
+                           | || | ||||  ||| |-- DFLAG_NEW_FLOATS
+                           | || | ||||  |||-- DFLAG_UNICODE_IO**-
+                           | || | ||||  ||-- DFLAG_DIST_HDR_ATOM_CACHE**-
+                           | || | ||||  |-- DFLAG_SMALL_ATOM_TAGS
+                           | || | ||||-- DFLAG_UTF8_ATOMS
+                           | || | |||-- DFLAG_MAP_TAG
+                           | || | ||-- DFLAG_BIG_CREATION**+
+                           | || | |-- DFLAG_SEND_SENDER**-
+                           | || |-- DFLAG_SEQTRACE_LABELS**
+                           | ||-- DFLAG_EXIT_PAYLOAD**
+                           | |-- DFLAG_FRAGMENTS**
+                           |-- DFLAG_HANDSHAKE_23 (still not set)
+
+        Tl; dr:
+        The only difference between the working and non working flags was the 
+        addition of the DFLAG_BIG_CREATION bit (0x40000). New working value is 0x7499c
+        This will likely change as you encounter different distributions.
+        '''
+
+        if not name:
+            name = self.node_name
+
+        #packet = pack('!HcHI', 7 + len(name), b'n', self.version, 0x3499c) + bytes(name, self.UTF8)
+        packet = pack('!HcHI', 7 + len(name), b'n', self.version, 0x7499c) + bytes(name, self.UTF8)
+
+        return packet
+
+    def _generate_name_packet_new(self, name=None):
+        '''
+        New v6 format:
         |--------|----|--------------------------------|--------|--------|----------|
         |\x00\x18|'N' |\x00\x00\x00\x00\x00\x03\x49\x9c|????    |\x00\x0e|NAME@node |
         |--------|----|--------------------------------|--------|--------|----------|
@@ -104,22 +183,6 @@ class ERLPopper:
             |--   Does not include these 2 bytes
 
         Capability flags / distribution flags
-        http://erlang.org/doc/apps/erts/erl_dist_protocol.html#dflags
-
-        This is how we let the other node know about our capabilities. This value 
-        was in the original exploit.
-
-        0x0003499c == 0b0000 0000 0011 0100 1001 1001 1100
-                           |        ||  |   |  | |  | ||-- DFLAG_EXTENDED_REFERENCES
-                           |        ||  |   |  | |  ||-- DFLAG_DIST_MONITOR
-                           |        ||  |   |  | |  |-- DFLAG_FUN_TAGS
-                           |        ||  |   |  | |-- DFLAG_NEW_FUN_TAGS 
-                           |        ||  |   |  |-- DFLAG_EXTENDED_PIDS_PORTS 
-                           |        ||  |   |-- DFLAG_NEW_FLOATS 
-                           |        ||  |-- DFLAG_SMALL_ATOM_TAGS
-                           |        ||-- DFLAG_UTF8_ATOMS
-                           |        |-- DFLAG_MAP_TAG 
-                           |-- DFLAG_HANDSHAKE_23
 
         Version 6 introduced the DFLAG_HANDSHAKE_23 which indicates this node 
         supports the OTP 23 handshake process. We must set this flag to show 
@@ -127,16 +190,6 @@ class ERLPopper:
 
         Setting that bit gives our v6_flags value 0x0103499c.
         '''
-
-        if not name:
-            name = self.node_name
-
-        #packet = pack('!HcHI', 7 + len(name), b'n', self.version, 0x3499c) + bytes(name, self.UTF8)
-        packet = pack('!HcHI', 7 + len(name), b'n', self.version, 0xdf7fbd) + bytes(name, self.UTF8)
-
-        return packet
-
-    def _generate_name_packet_new(self, name=None):
         if not name:
             name = self.node_name
 
@@ -310,3 +363,6 @@ class ERLPopper:
 
         return result
 
+    def send_cmd(self, cmd, name=None):
+        # self.node_name is set with ever self.send_name so don't need to track it
+        return
