@@ -377,6 +377,7 @@ def main():
             else:
                 if res:
                     print(f"[+] Good cookie! Host: {target} Cookie: {cookie}")
+                    break
                 else:
                     if args.verbose: print("[-] Bad cookie!")
 
