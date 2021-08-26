@@ -162,7 +162,11 @@ class ERLPopper:
             #self._log_verbose(f"Invalid version: '{repr(self.version)}'")
             raise self.VersionError(version=self.version, message=f"Invalid version: '{repr(self.version)}")
 
-        self._sock.sendall(packet)
+        try:
+            self._sock.sendall(packet)
+        except BrokenPipeError:
+            self._log_verbose(f"send_name failed. Is host reachable?")
+            raise
 
     def _recv_status(self):
         '''
@@ -361,6 +365,8 @@ def main():
                 print(f"[E] Error status: '{repr(e.status)}', msg: '{e.message}'")
             except ERLPopper.EmptyResponseError as e:
                 print(f"[E] Error response: '{e.message}'")
+            except BrokenPipeError as e:
+                print(f"[E] Broken pipe - is {target} up?")
             else:
                 if res:
                     print(f"[+] Good cookie! Host: {target} Cookie: {cookie}")
