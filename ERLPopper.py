@@ -17,8 +17,8 @@ class ERLPopper:
             self.message = message
 
     class VersionError(Exception):
-        def __init(self, version, message):
-            self.version = status
+        def __init__(self, version, message):
+            self.version = version
             self.message = message
 
     class EmptyResponseError(Exception):
