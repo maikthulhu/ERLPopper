@@ -28,7 +28,7 @@ def main():
     # Parse args
     parser = argparse.ArgumentParser(
             description="Attempt to brute force EPMD node cookie using various methods.",
-            epliog="Maximum interval seed space is 0 to 68719476735 according to erl-matter/bruteforce-erldp.c. That's 68.7 billion seeds * 21char = 64 GB if you were trying to store the cookies themselves. The entire [A-Z]{20} set is 26^20 * 21char = 3.98 * 10^29 bytes (39.8 million Exabytes)."
+            epilog="Maximum interval seed space is 0 to 68719476735 according to erl-matter/bruteforce-erldp.c. That's 68.7 billion seeds * 21char = 64 GB if you were trying to store the cookies themselves. The entire [A-Z]{20} set is 26^20 * 21char = 3.98 * 10^29 bytes (39.8 million Exabytes)."
     )
 
     parser.add_argument("target", action="store", type=parse_str_or_file, help="Target node <address>:<port>, or file containing newline-delimited list of <address>:<port> strings.")
