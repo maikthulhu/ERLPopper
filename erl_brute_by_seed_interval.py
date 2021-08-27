@@ -47,7 +47,7 @@ def main():
     for target in args.target:
         for interval in args.interval:
             (start, end) = interval.split(',')
-            for i in range(start, end):
+            for i in range(int(start), int(end)):
                 cookie = ERLPopper.create_cookie_from_seed(i)
                 epop = ERLPopper(target=target, cookie=cookie, version=version)
                 if epop.check_cookie():
