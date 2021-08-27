@@ -32,8 +32,8 @@ def main():
     parser.add_argument('target', action='store', type=parse_str_or_file, help='Target node <address>:<port>, or file containing newline-delimited list of <address>:<port> strings.')
     parser.add_argument('cookie', action='store', type=parse_str_or_file, help='Cluster cookie, or file containing newline-delimited list of <cookie> strings.')
     version_group = parser.add_mutually_exclusive_group()
-    version_group.add_argument('--old', action='store_true', help='Use old handshake method.')
-    version_group.add_argument('--new', action='store_true', help='Use new handshake method (default).')
+    version_group.add_argument('--old', action='store_true', help='Use old handshake method (default).')
+    version_group.add_argument('--new', action='store_true', help='Use new handshake method.')
     parser.add_argument('--verbose', action='store_true', help='Extra output for debugging.')
     parser.add_argument('--challenge', type=int, default=0, help='Set client challenge value.')
 
