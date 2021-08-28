@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 from os.path import isfile
+from time import time
 from ERLPopper import *
 
 #   char full_space[] = "0,68719476735,100.0";
@@ -47,7 +48,13 @@ def main():
     for target in args.target:
         for interval in args.interval:
             (start, end) = interval.split(',')
+            interval_time_last = time()
+            interval_progress = int(start)
             for i in range(int(start), int(end)):
+                if time() - interval_time_last > 5:
+                    print(f"Cookies: {int((i-interval_progress)/5)}/s", end='\r')
+                    interval_progress = i
+                    interval_time_last = time()
                 cookie = ERLPopper.create_cookie_from_seed(i)
                 epop = ERLPopper(target=target, cookie=cookie, version=version, verbose=args.verbose)
                 if epop.check_cookie():
