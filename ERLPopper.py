@@ -44,6 +44,8 @@ class ERLPopper:
         self.node_name = self._generate_node_name()
 
         # Create a socket, die if none
+        # [TODO] how do we keep this open for use after a failure?
+        #        setsockopt() SO_REUSEPORT ??
         self._sock = socket(AF_INET, SOCK_STREAM, 0)
         assert(self._sock)
 
@@ -336,6 +338,9 @@ class ERLPopper:
             self.send_name()
         except self.VersionError as e:
             raise
+        except BrokenPipeError as e:
+            self._log_verbose(f"Host not reachable: {self.remote_host}:{self.remote_port}")
+            return False
 
         # recv_status
         try:
