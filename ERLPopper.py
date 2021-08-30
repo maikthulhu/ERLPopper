@@ -328,12 +328,7 @@ class ERLPopper:
 
         return digest
         
-    def check_cookie(self, cookie=None):
-        try:
-            self._connect()
-        except:
-            pass
-
+    def check_cookie(self, cookie=None, close=True):
         if not cookie:
             cookie = self.cookie
 
@@ -386,7 +381,9 @@ class ERLPopper:
             self._close_socket()
             raise self.StatusError(status=status, message="The connection is disallowed for some (unspecified) security reason. Flags or version mismatch?")
 
-        self._close_socket()
+        if close:
+            self._close_socket()
+
         return result
 
     def _encode_string(self, in_str, t=0x64):
@@ -491,7 +488,23 @@ class ERLPopper:
 
         return res
 
-    def send_cmd(self, cmd, name=None):
+    def _send_cmd(self, cmd, name=None):
+        self._log_verbose("_send_cmd")
+        if not name:
+            name = self.node_name
+        
+        packet = ""
+
+        if self.version == 5:
+            packet = self._generate_cmd_packet_old(cmd, name)
+        elif self.version == 6:
+            packet = self._generate_cmd_packet_new(cmd, name)
+        else:
+            raise self.VersionError(version=self.version, message=f"Invalid version: '{repr(self.version)}")
+        
+        self._sock.sendall(packet)
+
+    def check_cookie_send_cmd(self, cookie, cmd, name=None):
         self._log_verbose("send_cmd")
 
         # cmd is required
@@ -500,7 +513,7 @@ class ERLPopper:
         #    raise ValueError("No command specified.")
 
         # must have good cookie
-        assert(self.check_cookie())
+        assert(self.check_cookie(cookie, close=False))
 
         self._log_verbose(f"  cmd: {cmd}, cookie: {self.cookie}, name: {self.node_name}")
 
@@ -522,10 +535,12 @@ class ERLPopper:
             raise self.VersionError(version=self.version, message=f"Invalid version: '{repr(self.version)}")
 
         # Send the command payload
-        self._sock.sendall(packet)
+        self._send_cmd(cmd, self.node_name)
 
         # Receive and decode the output (if any)
         res = self._recv_cmd_resp()
+
+        self._close_socket()
 
         return res
     
