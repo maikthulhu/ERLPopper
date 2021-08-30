@@ -44,11 +44,10 @@ def main():
         version = 6
 
     for target in args.target:
+        epop = ERLPopper(target=target, cookie=None, version=version, verbose=args.verbose, challenge=args.challenge, cmd=None)
         for cookie in args.cookie:
-            epop = ERLPopper(target=target, cookie=cookie, version=version, verbose=args.verbose, challenge=args.challenge, cmd=None)
-
             try:
-                res = epop.check_cookie()
+                res = epop.check_cookie(cookie)
             except ERLPopper.StatusError as e:
                 print(f"[E] Error status: '{repr(e.status)}', msg: '{e.message}'")
             except ERLPopper.EmptyResponseError as e:
