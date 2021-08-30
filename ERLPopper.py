@@ -513,7 +513,9 @@ class ERLPopper:
         #    raise ValueError("No command specified.")
 
         # must have good cookie
-        assert(self.check_cookie(cookie, close=False))
+        if not self.check_cookie(cookie, close=False):
+            self._close_socket()
+            return ""
 
         self._log_verbose(f"  cmd: {cmd}, cookie: {self.cookie}, name: {self.node_name}")
 
