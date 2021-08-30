@@ -1,5 +1,5 @@
+import socket
 from random import choice
-from socket import socket, AF_INET, SOCK_STREAM, SHUT_RDWR
 from struct import pack, unpack
 from string import ascii_uppercase
 from hashlib import md5
@@ -41,15 +41,22 @@ class ERLPopper:
             raise NotImplementedError()
 
         # Generate a node name to identify as
-        self.node_name = self._generate_node_name()
+        #self.node_name = self._generate_node_name()
 
+    def _create_socket(self):
+        self._log_verbose("  _create_socket")
         # Create a socket, die if none
-        # [TODO] how do we keep this open for use after a failure?
-        #        setsockopt() SO_REUSEPORT ??
-        self._sock = socket(AF_INET, SOCK_STREAM, 0)
+        self._sock = socket(socket.AF_INET, socket.SOCK_STREAM, 0)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         assert(self._sock)
 
+    def _close_socket(self):
+        self._log_verbose("  _close_socket")
+        self._sock.shutdown(socket.SHUT_RDWR)
+        self._sock.close()
+    
     def _log_verbose(self, data):
+        # [TODO] automatic spacing based on this function's "distance" from parent?
         if self._VERBOSE:
             print(f"[d] {data}")
 
@@ -154,7 +161,8 @@ class ERLPopper:
         '''
 
         if not name:
-            name = self.node_name
+            name = self._generate_node_name()
+            self.node_name = name
 
         #packet = pack('!HcHI', 7 + len(name), b'n', self.version, 0x3499c) + bytes(name, self._UTF8)
         packet = pack('!HcHI', 7 + len(name), b'n', self.version, 0x7499c) + bytes(name, self._UTF8)
@@ -194,15 +202,16 @@ class ERLPopper:
         Setting that bit gives our v6_flags value 0x0103499c.
         '''
         if not name:
-            name = self.node_name
+            name = self._generate_node_name()
+            self.node_name = name
 
         #name = "maik@ubu-brute01-maik"
         packet = pack('!HcQIH', 15 + len(name), b'N', 0x103499c, 0xdeadbeef, len(name)) + bytes(name, self._UTF8)
 
         return packet
 
-    def send_name(self, name=None):
-        self._log_verbose("  send_name")
+    def _send_name(self, name=None):
+        self._log_verbose("  _send_name")
 
         if self.version == 5:
             packet = self._generate_name_packet_old(name)
@@ -216,7 +225,7 @@ class ERLPopper:
         try:
             self._sock.sendall(packet)
         except BrokenPipeError:
-            self._log_verbose(f"    send_name failed. Is host reachable?")
+            self._log_verbose(f"    _send_name failed. Is host reachable?")
             raise
 
     def _recv_status(self):
@@ -328,18 +337,24 @@ class ERLPopper:
         if not cookie:
             cookie = self.cookie
 
+        self._create_socket()
+
+        self._connect()
+
         # Set the cookie every time so if we re-use this object (like for send_cmd) we are already set up
         #  Did the same thing with node_name
         self.cookie = cookie
         self._log_verbose(f"  Trying cookie: '{repr(cookie)}'")
 
-        # send_name
+        # _send_name
         try:
-            self.send_name()
+            self._send_name()
         except self.VersionError as e:
+            self._close_socket()
             raise
         except BrokenPipeError as e:
             self._log_verbose(f"Host not reachable: {self.remote_host}:{self.remote_port}")
+            self._close_socket()
             return False
 
         # recv_status
@@ -368,8 +383,10 @@ class ERLPopper:
         else:
             # 'not_allowed' and others
             self._log_verbose(f"    Got bad status response: '{repr(status)}'")
+            self._close_socket()
             raise self.StatusError(status=status, message="The connection is disallowed for some (unspecified) security reason. Flags or version mismatch?")
 
+        self._close_socket()
         return result
 
     def _encode_string(self, in_str, t=0x64):
@@ -491,7 +508,7 @@ class ERLPopper:
         #    raise 
 
         # Do this after so the object is initialized to a ready state
-        # self.node_name is set with ever self.send_name so don't need to track it
+        # self.node_name is set with every self._send_name so don't need to track it
         if not name:
             name = self.node_name
 
