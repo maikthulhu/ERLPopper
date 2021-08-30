@@ -46,7 +46,7 @@ class ERLPopper:
     def _create_socket(self):
         self._log_verbose("  _create_socket")
         # Create a socket, die if none
-        self._sock = socket(socket.AF_INET, socket.SOCK_STREAM, 0)
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         assert(self._sock)
 
