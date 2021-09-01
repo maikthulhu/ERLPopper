@@ -1,6 +1,6 @@
 # ERLPopper
 
-This Python module and the example scripts should help you get started in evaluating/pentesting Erlang Runtime System (ERTS) nodes (enumerated by EPMD) using the Erlang Distribution Protocol. This is not an official or to-spec implementation, and it is not very fast. It does not interact with Erlang Port Mapper Daemon (EPMD) at all.
+This Python module and the example scripts should help you get started in evaluating/pentesting Erlang Distribution Protocol (ErlDP) nodes (enumerated by EPMD). This is not an official or to-spec implementation, and it is not very fast. It does not interact with Erlang Port Mapper Daemon (EPMD) at all.
 
 ## Example Usage
 ```bash
@@ -39,7 +39,7 @@ I borrowed the cookie generator function from the above repo and implemented it 
 
 Given the above range (or "interval"), that is 68.7 billion different possible seeds. Each seed can generate a string that is 20 bytes long. A complete list of possible cookies (in a text file with newlines) in that range would be 1.44 TB (`(68.7 * 10^9) * 21`).
 
-For comparison, the entire `[A-Z]{20}` key space (`26^20`) would be `1.99 * 10^28`. If you want a name for that number, I think it's 19.9 octillion (or 19.9 thousand quadrillion). It's kind of large. An entire list of possible cookies would be that number * 21 (20 chars + 1 newline), resulting in 19.9 billion _exabytes_. Ain't nobody got time for that.
+For comparison, the entire `[A-Z]{20}` key space (`26^20`) would be `1.99 * 10^28`. If you want a name for that number, I think it's 19.9 octillion (or 19.9 thousand quadrillion). It's kind of large. An entire list of possible cookies would be that number * 21 (20 chars + 1 newline), resulting in 418.5 billion _exabytes_. Ain't nobody got time for that.
 
 ## Previous Works
 This project leaned _heavily_ on the work that came before, as well as the ERTS documentation. These resources are listed below and I urge you to check them out for more background.
