@@ -110,13 +110,17 @@ if __name__ == "__main__":
 
     # Work through one target/interval at a time
     #  Not using _async calls, otherwise you'll have num_processes * len(target_and_interval) processes
+    current_interval = 0
+    total_intervals = len(args.target_and_interval)
+
     for ti in args.target_and_interval:
+        current_interval += 1
         hostname = gethostname()
         (target, _) = ti.split(',', 1)
         (start, end) = (int(i) for i in _.split(','))
         num_seeds = end - start
 
-        print(f"Dividing {num_seeds} seeds ({start},{end}) among {num_processes} processes...")
+        print(f"Dividing {num_seeds} seeds ({start},{end}) among {num_processes} processes... (Interval {current_interval}/{total_intervals})")
         intervals = [(x.start, x.stop) for x in split(range(start, end), num_processes)]
 
         rate = multiprocessing.Value('I')
@@ -138,10 +142,12 @@ if __name__ == "__main__":
                     r = imap_it.next(0.02)
                     if r:
                         print(f"[+] Host '{hostname}' found cookie '{r}' for target '{target}'!")
+                        found.set()
                         break
                 except StopIteration:
                     break
                 except multiprocessing.TimeoutError:
                     continue
         
-            found.set()
+        if found.is_set():
+            exit(0)
