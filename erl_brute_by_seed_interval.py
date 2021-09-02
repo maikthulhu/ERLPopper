@@ -84,6 +84,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("target_and_interval", action="store", type=parse_str_or_file, help="Target node and interval <host:port>,<start>,<end> or file containing newline-delimited list of <host:port>,<start>,<end> strings.")
+    parser.add_argument("--output", action="store", help="An optional output file to use if a cookie is found. If not specified it will still go to STDOUT.")
     version_group = parser.add_mutually_exclusive_group()
     version_group.add_argument("--old", action="store_true", help="Use old handshake method (default).")
     version_group.add_argument("--new", action="store_true", help="Use new handshake method.")
@@ -120,7 +121,7 @@ if __name__ == "__main__":
         (start, end) = (int(i) for i in _.split(','))
         num_seeds = end - start
 
-        print(f"[*] Host: '{hostname}' dividing {num_seeds} seeds ({start},{end}) among {num_processes} processes... (Interval {current_interval}/{total_intervals})")
+        print(f"[*] Host: '{hostname}' Dividing {num_seeds} seeds ({start},{end}) among {num_processes} processes... (Interval {current_interval}/{total_intervals})")
         intervals = [(x.start, x.stop) for x in split(range(start, end), num_processes)]
 
         rate = multiprocessing.Value('I')
@@ -135,13 +136,16 @@ if __name__ == "__main__":
             last_update_time = time()
             while 1:
                 if time() - last_update_time > 2:
-                    print(f"  [*] Host: '{hostname}'\tRate: {rate.value}/s\tProgress: {interval_progress.value}/{(end-start)} ({(interval_progress.value/(end-start))*100:.2f}%)", file=stderr)
+                    print(f"[*] Host: {hostname}\tRate: {rate.value}/s\tProgress: {interval_progress.value}/{(end-start)} ({(interval_progress.value/(end-start))*100:.2f}%)", file=stderr)
                     last_update_time = time()
                 try:
                     # Try to get result or timeout after 0.02s
-                    r = imap_it.next(0.02)
-                    if r:
-                        print(f"[+] Host '{hostname}' found cookie '{r}' for target '{target}'!")
+                    cookie = imap_it.next(0.02)
+                    if cookie:
+                        print(f"[+] Host '{hostname}' found cookie '{cookie}' for target '{target}'!")
+                        if args.output:
+                            with (args.output, 'w') as f:
+                                f.write(f"{target},{cookie}")
                         found.set()
                         break
                 except StopIteration:
