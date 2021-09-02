@@ -144,7 +144,7 @@ if __name__ == "__main__":
                     if cookie:
                         print(f"[+] Host '{hostname}' found cookie '{cookie}' for target '{target}'!")
                         if args.output:
-                            with (args.output, 'w') as f:
+                            with open(args.output, 'w') as f:
                                 f.write(f"{target},{cookie}")
                         found.set()
                         break
