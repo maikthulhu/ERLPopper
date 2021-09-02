@@ -131,7 +131,7 @@ if __name__ == "__main__":
             last_update_time = time()
             while 1:
                 if time() - last_update_time > 2:
-                    print(f"[*] Host: {hostname}\tRate: {rate.value}/s\tProgress: {interval_progress.value}/{(end-start)} ({interval_progress.value/(end-start)})", file=stderr)
+                    print(f"[*] Host: {hostname}\tRate: {rate.value}/s\tProgress: {interval_progress.value}/{(end-start)} ({interval_progress.value/(end-start):.2f}%)", file=stderr)
                     last_update_time = time()
                 try:
                     # Try to get result or timeout after 0.02s
