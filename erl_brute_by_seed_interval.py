@@ -79,7 +79,8 @@ def go(args):
 if __name__ == "__main__":
     # Parse args
     parser = argparse.ArgumentParser(
-            description="Attempt to brute force EPMD node cookie given CSV file consisting of <host:port>,<start>,<end>. This was primarily written for ease of use by axiom-scan."
+            description="Attempt to brute force EPMD node cookie given a string or CSV file consisting of <host:port>,<start>,<end>.",
+            epilog="An interval is a range (start and end) of seeds to pass to the cookie generator function. Full range is considered to be 0 to 68719476735, but realistically the value should lie within a much tigher range. YMMV, but 68.7 billion seeds will take a long time."
     )
 
     parser.add_argument("target_and_interval", action="store", type=parse_str_or_file, help="Target node and interval <host:port>,<start>,<end> or file containing newline-delimited list of <host:port>,<start>,<end> strings.")
@@ -87,7 +88,6 @@ if __name__ == "__main__":
     version_group.add_argument("--old", action="store_true", help="Use old handshake method (default).")
     version_group.add_argument("--new", action="store_true", help="Use new handshake method.")
     parser.add_argument("--verbose", action="store_true", help="Extra output for debugging (n processes all spitting out verbose output... be smart).")
-    parser.add_argument("--show_rate", action="store_true", default=True, help="Tell worker process whether it should print its cookies/sec rate.")
     parser.add_argument("--processes", action="store", type=int, help="Number of processes to use (default: return value of os.cpu_count()).")
 
     args = parser.parse_args()
