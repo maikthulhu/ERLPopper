@@ -122,7 +122,7 @@ if __name__ == "__main__":
         (start, end) = (int(i) for i in _.split(','))
         num_seeds = end - start
 
-        print(f"[*] Host: '{hostname}' Dividing {num_seeds} seeds ({start},{end}) among {num_processes} processes... (Interval {current_interval}/{total_intervals})")
+        print(f"[*] Host: '{hostname}' dividing {num_seeds} seeds ({start},{end}) among {num_processes} processes... (Interval {current_interval}/{total_intervals})")
         intervals = [(x.start, x.stop) for x in split(range(start, end), num_processes)]
 
         rate = multiprocessing.Value('I')
