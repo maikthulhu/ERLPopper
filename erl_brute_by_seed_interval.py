@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import multiprocessing
-from sys import stderr, exit
+from sys import stderr, stdout, exit
 from socket import gethostname
 from os import cpu_count
 from os.path import isfile
@@ -87,6 +87,7 @@ if __name__ == "__main__":
     version_group = parser.add_mutually_exclusive_group()
     version_group.add_argument("--old", action="store_true", help="Use old handshake method (default).")
     version_group.add_argument("--new", action="store_true", help="Use new handshake method.")
+    parser.add_argument("--status", action="store_true", default=False, help="If set, status is sent to stdout instead of stderr.")
     parser.add_argument("--verbose", action="store_true", help="Extra output for debugging (n processes all spitting out verbose output... be smart).")
     parser.add_argument("--processes", action="store", type=int, help="Number of processes to use (default: return value of os.cpu_count()).")
 
@@ -103,6 +104,10 @@ if __name__ == "__main__":
     num_processes = args.processes
     if not num_processes:
         num_processes = cpu_count()
+
+    status_out = stderr
+    if args.status:
+        status_out = stdout
 
     if num_processes < 3:
         print("[E] Number of processes should be 3 or greater (try --processes 64).")
@@ -135,7 +140,7 @@ if __name__ == "__main__":
             last_update_time = time()
             while 1:
                 if time() - last_update_time > 2:
-                    print(f"[*] Host: {hostname}\tRate: {rate.value}/s\tProgress: {interval_progress.value}/{(end-start)} ({(interval_progress.value/(end-start))*100:.2f}%)", file=stderr)
+                    print(f"[*] Host: {hostname}\tRate: {rate.value}/s\tProgress: {interval_progress.value}/{(end-start)} ({(interval_progress.value/(end-start))*100:.2f}%)", file=status_out)
                     last_update_time = time()
                 try:
                     # Try to get result or timeout after 0.02s
