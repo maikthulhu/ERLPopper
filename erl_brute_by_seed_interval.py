@@ -106,7 +106,7 @@ if __name__ == "__main__":
     # Create a product of the passed in arguments which will get map()ed as iterables to pool processes
     targets_intervals_product = product(args.target, intervals, [version], [args.verbose])
 
-    print(f"Dividing {len(intervals)} intervals among {processes} processes...")
+    print(f"Dividing {len(args.interval)} intervals among {processes} processes...")
     with Pool(processes=args.processes) as pool:
         result = pool.starmap_async(func=go, iterable=targets_intervals_product, callback=print_result).get()
 
