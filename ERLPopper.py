@@ -1,4 +1,5 @@
 import socket
+from sys import stderr
 from random import choice
 from struct import pack, unpack
 from string import ascii_uppercase
@@ -56,9 +57,10 @@ class ERLPopper:
         self._sock.close()
     
     def _log_verbose(self, data):
+        # Print verbose output to stderr
         # [TODO] automatic spacing based on this function's "distance" from parent?
         if self._VERBOSE:
-            print(f"[d] {data}")
+            print(f"[d] {data}", file=stderr)
 
     def _generate_node_name(self, n=6):
         '''
