@@ -47,6 +47,7 @@ def go(target, interval, version, verbose):
     interval_time_last = time()
     interval_progress = int(start)
     r = 0
+    old_r = 0
     epop = ERLPopper(target=target, cookie=None, version=version, verbose=verbose)
     for i in range(int(start), int(end)):
         if time() - interval_time_last > 2:
