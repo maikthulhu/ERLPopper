@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
     parser.add_argument("target_and_interval", action="store", type=parse_str_or_file, help="Target node and interval <host:port>,<start>,<end> or file containing newline-delimited list of <host:port>,<start>,<end> strings.")
     parser.add_argument("--output", action="store", help="An optional output file to use if a cookie is found. If not specified it will still go to STDOUT.")
-    parser.add_argument("--quiet", action="store_true", help="Suppress progress statistics.")
+    parser.add_argument("--quiet", action="store_true", default=False, help="Suppress progress statistics.")
     version_group = parser.add_mutually_exclusive_group()
     version_group.add_argument("--old", action="store_true", help="Use old handshake method (default).")
     version_group.add_argument("--new", action="store_true", help="Use new handshake method.")
