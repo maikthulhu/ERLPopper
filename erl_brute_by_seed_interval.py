@@ -73,14 +73,14 @@ def go(args):
         while 1:
             # Try checking the cookie
             try:
-                if epop.check_cookie1(cookie):
+                if epop.check_cookie(cookie):
                     return cookie
             # If an exception occurs
-            except:
+            except Exception as e:
                 # And we're past the timeout
                 if time() > connect_start_time + timeout:
                     # Print an error and return from this function entirely
-                    print(f"[E] Connection to target '{target}' failed after {timeout} seconds. Moving on to next interval.")
+                    print(f"[E] Connection to target '{target}' failed after {timeout} seconds ({e.__class__}). Moving on to next interval.")
                     return None
                 # If past the timeout, keep trying
                 continue
